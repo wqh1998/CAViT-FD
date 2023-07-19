@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import pytorch_ssim
 import torch
 from torch.autograd import Variable
-from torchvision.models import vgg16
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -41,7 +40,6 @@ def feature_loss(real, fake, num=0.1):
 
 def pixel_loss(real, fake, num=1):
     loss = torch.mean(torch.sum(torch.sum(torch.abs(real - fake), 1), 1)) * num
-    #    loss = tf.reduce_mean(tf.abs(real - fake)) * num
     return loss
 
 class CharbonnierLoss(nn.Module):
@@ -125,21 +123,20 @@ class Act(nn.Module):
     def __init__(self, F_g, F_l, F_int):  # 通道 F_g:大尺寸输入 F_l：前级输入 F_int：他们通道的一半
         super(Act, self).__init__()
         self.W_g = nn.Sequential(  # 步长为1的1*1卷积 BN
-            nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_g, F_int, (1,1), (1,1), padding=0, bias=True),
             nn.BatchNorm2d(F_int)
         )  # 输出：Hg*Wg*F_int
 
         self.W_x = nn.Sequential(  # 步长为1的1*1卷积 BN
-            nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_l, F_int, (1,1), (1,1), padding=0, bias=True),
             nn.BatchNorm2d(F_int)
         )  # 输出：Hg*Wg*F_int
 
         self.psi = nn.Sequential(  # 步长为1的1*1卷积 BN
-            nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_int, 1, (1,1), (1,1), padding=0, bias=True),
             nn.BatchNorm2d(1),
             nn.Sigmoid()
         )
-
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, g, x):
