@@ -1,31 +1,12 @@
 import os
-import random
 import torch
-import datetime
-import time
 import argparse
 import torch.nn as nn
-import torchvision.transforms as transforms
-import torch.nn.functional as F
-from torch.autograd import Variable
-from PIL import Image
-from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image, make_grid
 from datahelper_test import val_dataloader
 from model.generator import GeneratorResNet
 from model.discriminator import Discriminator
-from utils import symL1
-from training.lpips import exportPerceptualLoss
 
-############################  datasets  ###################################
-
-## 如果输入的数据集是灰度图像，将图片转化为rgb图像(本次采用的facades不需要这个)
-def to_rgb(image):
-    rgb_image = Image.new("RGB", image.size)
-    rgb_image.paste(image)
-    return rgb_image
-
-############################  models  ###################################
 # 定义参数初始化函数
 def weights_init_normal(m):
     classname = m.__class__.__name__  ## m作为一个形参，原则上可以传递很多的内容, 为了实现多实参传递，每一个moudle要给出自己的name. 所以这句话就是返回m的名字.
@@ -36,29 +17,6 @@ def weights_init_normal(m):
     elif classname.find("BatchNorm2d") != -1:  ## find():实现查找classname中是否含有BatchNorm2d字符，没有返回-1；有返回0.
         torch.nn.init.normal_(m.weight.data, 1.0,0.02)  ## m.weight.data表示需要初始化的权重. nn.init.normal_():表示随机初始化采用正态分布，均值为0，标准差为0.02.
         torch.nn.init.constant_(m.bias.data, 0.0)  ## nn.init.constant_():表示将偏差定义为常量0.
-
-## 先前生成的样本的缓冲区
-class ReplayBuffer:
-    def __init__(self, max_size=50):
-        assert max_size > 0, "Empty buffer or trying to create a black hole. Be careful."
-        self.max_size = max_size
-        self.data = []
-
-    def push_and_pop(self, data):  ## 放入一张图像，再从buffer里取一张出来
-        to_return = []  ## 确保数据的随机性，判断真假图片的鉴别器识别率
-        for element in data.data:
-            element = torch.unsqueeze(element, 0)
-            if len(self.data) < self.max_size:  ## 最多放入50张，没满就一直添加
-                self.data.append(element)
-                to_return.append(element)
-            else:
-                if random.uniform(0, 1) > 0.5:  ## 满了就1/2的概率从buffer里取，或者就用当前的输入图片
-                    i = random.randint(0, self.max_size - 1)
-                    to_return.append(self.data[i].clone())
-                    self.data[i] = element
-                else:
-                    to_return.append(element)
-        return Variable(torch.cat(to_return))
 
 ## 设置学习率为初始学习率乘以给定lr_lambda函数的值，乘法因子
 class Lambdalr:
@@ -71,8 +29,8 @@ class Lambdalr:
     def step(self, epoch):  ## return    1-max(0, epoch - 3) / (5 - 3)
         return 1.0 - max(0, epoch + self.offset - self.decay_start_epoch) / (self.n_epochs * 2 - self.decay_start_epoch)
 
-###########################################################################
-############################  cycle_gan  ###################################
+#########################################################################################################
+#############################################  CAViT-FD  ################################################
 ## 超参数配置
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
@@ -82,7 +40,7 @@ parser.add_argument("--train", type=str, default="train", help="name of the data
 parser.add_argument("--test", type=str, default="test", help="name of the dataset")  ## ../input/facades-dataset
 parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
 parser.add_argument("--batch_size_test", type=int, default=1, help="size of the batches")
-parser.add_argument("--lr", type=float, default=2e-6, help="adam: learning rate") #最好的学习率4e-6/2e-6
+parser.add_argument("--lr", type=float, default=2e-6, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--decay_epoch", type=int, default=3, help="epoch from which to start lr decay")
@@ -132,10 +90,10 @@ input_shape = (opt.channels, opt.img_height, opt.img_width)
 #     generator = torch.load("save/226_4/generator_0.pth")
 #     discriminator = torch.load("save/226_4/discriminator_0.pth")
 #     print("\nload my model finished !!")
-# 导入模型
+
 print("model loading")
-generator_path_model = "./generator_9.pth"
-discriminator_path_model = "./discriminator_9.pth"
+generator_path_model = "./generator.pth"
+discriminator_path_model = "./discriminator.pth"
 ## 创建生成器，判别器对象
 generator = GeneratorResNet(input_shape, num_residual_blocks=1)
 discriminator = Discriminator(input_shape)
